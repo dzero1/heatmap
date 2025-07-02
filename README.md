@@ -54,6 +54,6 @@ For more advanced usage and customization, refer to the documentation in `heatma
 
 ## Additional information
 
-- [API Documentation](https://pub.dev/documentation/heatmap_painter/latest/)
-- Contributions are welcome! Please open issues or pull requests on [GitHub](https://github.com/your-repo/heatmap_painter).
+- API Documentation (To be update)
+- Contributions are welcome! Please open issues or pull requests on [GitHub](https://github.com/dzero1/heatmap_painter).
 - For questions or support, file an issue and expect a response within a few days.
