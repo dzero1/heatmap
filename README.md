@@ -43,10 +43,9 @@ final data = [
 
 Heatmap(
     data: data,
-    colorScheme: HeatmapColorScheme.defaultScheme,
-    onCellTap: (row, col) {
-        print('Tapped cell at ($row, $col)');
-    },
+    config: HeatmapConfig(
+        backgroundImage: ui.Image,
+    ),
 )
 ```
 

@@ -84,12 +84,12 @@ class HeatmapData {
 }
 
 /// Flutter Heatmap Widget - equivalent to heatmap.js
-class FlutterHeatmap extends StatefulWidget {
+class Heatmap extends StatefulWidget {
   final HeatmapData data;
   final HeatmapConfig config;
   final Function(double min, double max)? onExtremaChange;
 
-  const FlutterHeatmap({
+  const Heatmap({
     super.key,
     required this.data,
     this.config = const HeatmapConfig(),
@@ -97,10 +97,10 @@ class FlutterHeatmap extends StatefulWidget {
   });
 
   @override
-  State<FlutterHeatmap> createState() => _FlutterHeatmapState();
+  State<Heatmap> createState() => _HeatmapState();
 }
 
-class _FlutterHeatmapState extends State<FlutterHeatmap> {
+class _HeatmapState extends State<Heatmap> {
   @override
   void initState() {
     super.initState();
@@ -111,7 +111,7 @@ class _FlutterHeatmapState extends State<FlutterHeatmap> {
   }
 
   @override
-  void didUpdateWidget(FlutterHeatmap oldWidget) {
+  void didUpdateWidget(Heatmap oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.data != widget.data) {
       // Schedule the callback for after the build completes
