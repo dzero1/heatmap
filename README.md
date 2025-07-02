@@ -15,7 +15,7 @@ Add the package to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-    heatmap_painter: ^latest_version
+    heatmap: ^latest_version
 ```
 
 Then run:
@@ -29,7 +29,7 @@ flutter pub get
 Import the main library:
 
 ```dart
-import 'package:heatmap_painter/heatmap_painter.dart';
+import 'package:heatmap/heatmap.dart';
 ```
 
 Here's a basic example:
@@ -49,10 +49,10 @@ Heatmap(
 )
 ```
 
-For more advanced usage and customization, refer to the documentation in `heatmap_painter/lib/heatmap_painter.dart` and see the `/example` folder.
+For more advanced usage and customization, refer to the documentation in `heatmap/lib/heatmap.dart` and see the `/example` folder.
 
 ## Additional information
 
 - API Documentation (To be update)
-- Contributions are welcome! Please open issues or pull requests on [GitHub](https://github.com/dzero1/heatmap_painter).
+- Contributions are welcome! Please open issues or pull requests on [GitHub](https://github.com/dzero1/heatmap).
 - For questions or support, file an issue and expect a response within a few days.
