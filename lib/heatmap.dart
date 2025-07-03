@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -29,7 +31,7 @@ class HeatmapConfig {
   final String xField;
   final String yField;
   final String valueField;
-  final ui.Image? backgroundImage;
+  final ImageProvider? backgroundImage;
   final BoxFit backgroundFit;
   final BlendMode? blendMode;
   final double backgroundOpacity;
@@ -83,27 +85,220 @@ class HeatmapData {
   }
 }
 
+/// Custom ImageProvider for generating fallback images
+class GeneratedImageProvider extends ImageProvider<GeneratedImageProvider> {
+  final int width;
+  final int height;
+
+  const GeneratedImageProvider({required this.width, required this.height});
+
+  @override
+  Future<GeneratedImageProvider> obtainKey(ImageConfiguration configuration) {
+    return SynchronousFuture<GeneratedImageProvider>(this);
+  }
+
+  @override
+  ImageStreamCompleter loadImage(
+    GeneratedImageProvider key,
+    ImageDecoderCallback decode,
+  ) {
+    return OneFrameImageStreamCompleter(_loadAsync(key));
+  }
+
+  Future<ImageInfo> _loadAsync(GeneratedImageProvider key) async {
+    // Generate a fallback image
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final size = Size(width.toDouble(), height.toDouble());
+
+    // Draw a sample background with geometric patterns
+    final paint = Paint();
+
+    // Background gradient
+    final gradient = LinearGradient(
+      colors: [Colors.blue.shade100, Colors.purple.shade100],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+    paint.shader = gradient.createShader(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+    );
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
+
+    // Add some geometric shapes for visual interest
+    paint.shader = null;
+    paint.color = Colors.white.withAlpha((0.3 * 255).round());
+
+    // Draw circles
+    for (int i = 0; i < 10; i++) {
+      final random = math.Random(i);
+      canvas.drawCircle(
+        Offset(
+          random.nextDouble() * size.width,
+          random.nextDouble() * size.height,
+        ),
+        random.nextDouble() * 50 + 20,
+        paint,
+      );
+    }
+
+    // Draw rectangles
+    paint.color = Colors.black.withAlpha((0.1 * 255).round());
+    for (int i = 0; i < 5; i++) {
+      final random = math.Random(i + 100);
+      canvas.drawRect(
+        Rect.fromLTWH(
+          random.nextDouble() * size.width * 0.5,
+          random.nextDouble() * size.height * 0.5,
+          random.nextDouble() * 100 + 50,
+          random.nextDouble() * 100 + 50,
+        ),
+        paint,
+      );
+    }
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(width, height);
+
+    return ImageInfo(image: image);
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (other.runtimeType != runtimeType) return false;
+    return other is GeneratedImageProvider &&
+        other.width == width &&
+        other.height == height;
+  }
+
+  @override
+  int get hashCode => Object.hash(width, height);
+}
+
 /// Flutter Heatmap Widget - equivalent to heatmap.js
 class Heatmap extends StatefulWidget {
   final HeatmapData data;
   final HeatmapConfig config;
   final Function(double min, double max)? onExtremaChange;
+  final Function(Size imageSize)? onImageSizeChange;
 
   const Heatmap({
     super.key,
     required this.data,
     this.config = const HeatmapConfig(),
     this.onExtremaChange,
+    this.onImageSizeChange,
   });
+
+  /// Try to load an asset image, fallback to generated image if it fails
+  static Future<ImageProvider> loadImageProviderWithFallback({
+    String? assetPath,
+    String? networkUrl,
+    double fallbackWidth = 800.0,
+    double fallbackHeight = 600.0,
+  }) async {
+    try {
+      if (assetPath != null) {
+        final provider = AssetImage(assetPath);
+        // Test if the asset can be loaded by getting its dimensions
+        await getImageDimensions(provider);
+        return provider;
+      } else if (networkUrl != null) {
+        final provider = NetworkImage(networkUrl);
+        // Test if the network image can be loaded by getting its dimensions
+        await getImageDimensions(provider);
+        return provider;
+      }
+    } catch (e) {
+      // Asset or network image failed to load, use fallback
+    }
+
+    return createFallbackImageProvider(
+      width: fallbackWidth,
+      height: fallbackHeight,
+    );
+  }
+
+  /// Get image dimensions from ImageProvider
+  static Future<Size> getImageDimensions(ImageProvider imageProvider) async {
+    final Completer<Size> completer = Completer<Size>();
+
+    final ImageConfiguration config = const ImageConfiguration();
+    final ImageStream stream = imageProvider.resolve(config);
+
+    late ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (ImageInfo info, bool synchronousCall) {
+        final Size size = Size(
+          info.image.width.toDouble(),
+          info.image.height.toDouble(),
+        );
+        stream.removeListener(listener);
+        if (!completer.isCompleted) {
+          completer.complete(size);
+        }
+      },
+      onError: (exception, stackTrace) {
+        stream.removeListener(listener);
+        if (!completer.isCompleted) {
+          completer.completeError(exception);
+        }
+      },
+    );
+
+    stream.addListener(listener);
+    return completer.future;
+  }
+
+  /// Create a fallback image provider with generated content
+  static ImageProvider createFallbackImageProvider({
+    double width = 800.0,
+    double height = 600.0,
+  }) {
+    return GeneratedImageProvider(width: width.toInt(), height: height.toInt());
+  }
+
+  /// Generate heatmap data scaled to image dimensions
+  static HeatmapData generateScaledHeatmapData({
+    required List<Map<String, dynamic>> analysisData,
+    required double imageWidth,
+    required double imageHeight,
+  }) {
+    final points = <HeatmapPoint>[];
+
+    for (final analysis in analysisData) {
+      final breachpoints = analysis['breachpoints'] as List<dynamic>;
+      final riskScore = analysis['risk_score'] as double;
+
+      for (final point in breachpoints) {
+        points.add(
+          HeatmapPoint(
+            x: point['x'] * imageWidth, // Scale to actual image width
+            y: point['y'] * imageHeight, // Scale to actual image height
+            value: riskScore,
+          ),
+        );
+      }
+    }
+
+    return HeatmapData.fromPoints(points);
+  }
 
   @override
   State<Heatmap> createState() => _HeatmapState();
 }
 
 class _HeatmapState extends State<Heatmap> {
+  ui.Image? _backgroundImage;
+  ImageStream? _imageStream;
+  ImageStreamListener? _imageStreamListener;
+  Size? _imageSize;
+  bool _imageLoading = false;
+
   @override
   void initState() {
     super.initState();
+    _loadBackgroundImage();
     // Schedule the callback for after the build completes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _notifyExtremaChange();
@@ -113,6 +308,13 @@ class _HeatmapState extends State<Heatmap> {
   @override
   void didUpdateWidget(Heatmap oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    // Check if background image changed
+    if (oldWidget.config.backgroundImage != widget.config.backgroundImage) {
+      _disposeImageStream();
+      _loadBackgroundImage();
+    }
+
     if (oldWidget.data != widget.data) {
       // Schedule the callback for after the build completes
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -121,11 +323,85 @@ class _HeatmapState extends State<Heatmap> {
     }
   }
 
+  @override
+  void dispose() {
+    _disposeImageStream();
+    super.dispose();
+  }
+
+  void _disposeImageStream() {
+    if (_imageStreamListener != null && _imageStream != null) {
+      _imageStream!.removeListener(_imageStreamListener!);
+    }
+    _imageStreamListener = null;
+    _imageStream = null;
+    _backgroundImage = null;
+    _imageSize = null;
+  }
+
+  void _loadBackgroundImage() {
+    if (widget.config.backgroundImage == null) {
+      setState(() {
+        _backgroundImage = null;
+        _imageSize = null;
+        _imageLoading = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _imageLoading = true;
+    });
+
+    final ImageConfiguration config = const ImageConfiguration();
+    _imageStream = widget.config.backgroundImage!.resolve(config);
+
+    _imageStreamListener = ImageStreamListener(
+      (ImageInfo info, bool synchronousCall) {
+        if (mounted) {
+          final size = Size(
+            info.image.width.toDouble(),
+            info.image.height.toDouble(),
+          );
+          setState(() {
+            _backgroundImage = info.image;
+            _imageSize = size;
+            _imageLoading = false;
+          });
+          _notifyImageSizeChange(size);
+        }
+      },
+      onError: (exception, stackTrace) {
+        if (mounted) {
+          setState(() {
+            _backgroundImage = null;
+            _imageSize = null;
+            _imageLoading = false;
+          });
+        }
+      },
+    );
+
+    _imageStream!.addListener(_imageStreamListener!);
+  }
+
   void _notifyExtremaChange() {
     if (widget.onExtremaChange != null && mounted) {
       widget.onExtremaChange!(widget.data.min, widget.data.max);
     }
   }
+
+  void _notifyImageSizeChange(Size size) {
+    if (widget.onImageSizeChange != null && mounted) {
+      widget.onImageSizeChange!(size);
+    }
+  }
+
+  /// Get image dimensions from the currently loaded image
+  Size? get imageSize => _imageSize;
+
+  /// Check if image is currently loading
+  bool get isImageLoading => _imageLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -135,7 +411,11 @@ class _HeatmapState extends State<Heatmap> {
         builder: (context, constraints) {
           return CustomPaint(
             size: Size(constraints.maxWidth, constraints.maxHeight),
-            painter: HeatmapPainter(data: widget.data, config: widget.config),
+            painter: HeatmapPainter(
+              data: widget.data,
+              config: widget.config,
+              backgroundImage: _backgroundImage,
+            ),
             child: SizedBox(
               width: constraints.maxWidth,
               height: constraints.maxHeight,
@@ -151,13 +431,18 @@ class _HeatmapState extends State<Heatmap> {
 class HeatmapPainter extends CustomPainter {
   final HeatmapData data;
   final HeatmapConfig config;
+  final ui.Image? backgroundImage;
 
-  HeatmapPainter({required this.data, required this.config});
+  HeatmapPainter({
+    required this.data,
+    required this.config,
+    this.backgroundImage,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     // Draw background image if provided - fill the entire canvas
-    if (config.backgroundImage != null) {
+    if (backgroundImage != null) {
       _drawBackgroundImage(canvas, size);
     }
 
@@ -167,9 +452,9 @@ class HeatmapPainter extends CustomPainter {
     double imageWidth = size.width;
     double imageHeight = size.height;
 
-    if (config.backgroundImage != null) {
-      imageWidth = config.backgroundImage!.width.toDouble();
-      imageHeight = config.backgroundImage!.height.toDouble();
+    if (backgroundImage != null) {
+      imageWidth = backgroundImage!.width.toDouble();
+      imageHeight = backgroundImage!.height.toDouble();
     }
 
     // Create a picture recorder for off-screen heatmap rendering
@@ -197,18 +482,92 @@ class HeatmapPainter extends CustomPainter {
   }
 
   void _drawBackgroundImage(Canvas canvas, Size size) {
-    if (config.backgroundImage == null) return;
+    if (backgroundImage == null) return;
 
-    final image = config.backgroundImage!;
+    final image = backgroundImage!;
 
-    // Always fill the entire canvas with the background image
-    final srcRect = Rect.fromLTWH(
+    // Calculate the destination rectangle based on BoxFit
+    final Rect destRect;
+    final Rect srcRect = Rect.fromLTWH(
       0,
       0,
       image.width.toDouble(),
       image.height.toDouble(),
     );
-    final destRect = Rect.fromLTWH(0, 0, size.width, size.height);
+
+    switch (config.backgroundFit) {
+      case BoxFit.fill:
+        destRect = Rect.fromLTWH(0, 0, size.width, size.height);
+        break;
+      case BoxFit.contain:
+        final double scale = math.min(
+          size.width / image.width,
+          size.height / image.height,
+        );
+        final double scaledWidth = image.width * scale;
+        final double scaledHeight = image.height * scale;
+        final double offsetX = (size.width - scaledWidth) / 2;
+        final double offsetY = (size.height - scaledHeight) / 2;
+        destRect = Rect.fromLTWH(offsetX, offsetY, scaledWidth, scaledHeight);
+        break;
+      case BoxFit.cover:
+        final double scale = math.max(
+          size.width / image.width,
+          size.height / image.height,
+        );
+        final double scaledWidth = image.width * scale;
+        final double scaledHeight = image.height * scale;
+        final double offsetX = (size.width - scaledWidth) / 2;
+        final double offsetY = (size.height - scaledHeight) / 2;
+        destRect = Rect.fromLTWH(offsetX, offsetY, scaledWidth, scaledHeight);
+        break;
+      case BoxFit.fitWidth:
+        final double scale = size.width / image.width;
+        final double scaledHeight = image.height * scale;
+        final double offsetY = (size.height - scaledHeight) / 2;
+        destRect = Rect.fromLTWH(0, offsetY, size.width, scaledHeight);
+        break;
+      case BoxFit.fitHeight:
+        final double scale = size.height / image.height;
+        final double scaledWidth = image.width * scale;
+        final double offsetX = (size.width - scaledWidth) / 2;
+        destRect = Rect.fromLTWH(offsetX, 0, scaledWidth, size.height);
+        break;
+      case BoxFit.none:
+        final double offsetX = (size.width - image.width) / 2;
+        final double offsetY = (size.height - image.height) / 2;
+        destRect = Rect.fromLTWH(
+          offsetX,
+          offsetY,
+          image.width.toDouble(),
+          image.height.toDouble(),
+        );
+        break;
+      case BoxFit.scaleDown:
+        if (image.width <= size.width && image.height <= size.height) {
+          // Use BoxFit.none if image is smaller than canvas
+          final double offsetX = (size.width - image.width) / 2;
+          final double offsetY = (size.height - image.height) / 2;
+          destRect = Rect.fromLTWH(
+            offsetX,
+            offsetY,
+            image.width.toDouble(),
+            image.height.toDouble(),
+          );
+        } else {
+          // Use BoxFit.contain if image is larger than canvas
+          final double scale = math.min(
+            size.width / image.width,
+            size.height / image.height,
+          );
+          final double scaledWidth = image.width * scale;
+          final double scaledHeight = image.height * scale;
+          final double offsetX = (size.width - scaledWidth) / 2;
+          final double offsetY = (size.height - scaledHeight) / 2;
+          destRect = Rect.fromLTWH(offsetX, offsetY, scaledWidth, scaledHeight);
+        }
+        break;
+    }
 
     final paint = Paint()
       ..color = Colors.white.withAlpha(
@@ -319,6 +678,8 @@ class HeatmapPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(HeatmapPainter oldDelegate) {
-    return oldDelegate.data != data || oldDelegate.config != config;
+    return oldDelegate.data != data ||
+        oldDelegate.config != config ||
+        oldDelegate.backgroundImage != backgroundImage;
   }
 }
