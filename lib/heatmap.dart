@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -35,6 +34,7 @@ class HeatmapConfig {
   final BoxFit backgroundFit;
   final BlendMode? blendMode;
   final double backgroundOpacity;
+  final bool useNormalizedCoordinates;
 
   const HeatmapConfig({
     this.backgroundColor = Colors.transparent,
@@ -56,6 +56,7 @@ class HeatmapConfig {
     this.backgroundFit = BoxFit.cover,
     this.blendMode,
     this.backgroundOpacity = 1.0,
+    this.useNormalizedCoordinates = false,
   });
 }
 
@@ -82,348 +83,6 @@ class HeatmapData {
     }
 
     return HeatmapData(points: points, max: max, min: min);
-  }
-}
-
-/// Custom ImageProvider for generating fallback images
-class GeneratedImageProvider extends ImageProvider<GeneratedImageProvider> {
-  final int width;
-  final int height;
-
-  const GeneratedImageProvider({required this.width, required this.height});
-
-  @override
-  Future<GeneratedImageProvider> obtainKey(ImageConfiguration configuration) {
-    return SynchronousFuture<GeneratedImageProvider>(this);
-  }
-
-  @override
-  ImageStreamCompleter loadImage(
-    GeneratedImageProvider key,
-    ImageDecoderCallback decode,
-  ) {
-    return OneFrameImageStreamCompleter(_loadAsync(key));
-  }
-
-  Future<ImageInfo> _loadAsync(GeneratedImageProvider key) async {
-    // Generate a fallback image
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    final size = Size(width.toDouble(), height.toDouble());
-
-    // Draw a sample background with geometric patterns
-    final paint = Paint();
-
-    // Background gradient
-    final gradient = LinearGradient(
-      colors: [Colors.blue.shade100, Colors.purple.shade100],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
-    paint.shader = gradient.createShader(
-      Rect.fromLTWH(0, 0, size.width, size.height),
-    );
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
-
-    // Add some geometric shapes for visual interest
-    paint.shader = null;
-    paint.color = Colors.white.withAlpha((0.3 * 255).round());
-
-    // Draw circles
-    for (int i = 0; i < 10; i++) {
-      final random = math.Random(i);
-      canvas.drawCircle(
-        Offset(
-          random.nextDouble() * size.width,
-          random.nextDouble() * size.height,
-        ),
-        random.nextDouble() * 50 + 20,
-        paint,
-      );
-    }
-
-    // Draw rectangles
-    paint.color = Colors.black.withAlpha((0.1 * 255).round());
-    for (int i = 0; i < 5; i++) {
-      final random = math.Random(i + 100);
-      canvas.drawRect(
-        Rect.fromLTWH(
-          random.nextDouble() * size.width * 0.5,
-          random.nextDouble() * size.height * 0.5,
-          random.nextDouble() * 100 + 50,
-          random.nextDouble() * 100 + 50,
-        ),
-        paint,
-      );
-    }
-
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(width, height);
-
-    return ImageInfo(image: image);
-  }
-
-  @override
-  bool operator ==(Object other) {
-    if (other.runtimeType != runtimeType) return false;
-    return other is GeneratedImageProvider &&
-        other.width == width &&
-        other.height == height;
-  }
-
-  @override
-  int get hashCode => Object.hash(width, height);
-}
-
-/// Flutter Heatmap Widget - equivalent to heatmap.js
-class Heatmap extends StatefulWidget {
-  final HeatmapData data;
-  final HeatmapConfig config;
-  final Function(double min, double max)? onExtremaChange;
-  final Function(Size imageSize)? onImageSizeChange;
-
-  const Heatmap({
-    super.key,
-    required this.data,
-    this.config = const HeatmapConfig(),
-    this.onExtremaChange,
-    this.onImageSizeChange,
-  });
-
-  /// Try to load an asset image, fallback to generated image if it fails
-  static Future<ImageProvider> loadImageProviderWithFallback({
-    String? assetPath,
-    String? networkUrl,
-    double fallbackWidth = 800.0,
-    double fallbackHeight = 600.0,
-  }) async {
-    try {
-      if (assetPath != null) {
-        final provider = AssetImage(assetPath);
-        // Test if the asset can be loaded by getting its dimensions
-        await getImageDimensions(provider);
-        return provider;
-      } else if (networkUrl != null) {
-        final provider = NetworkImage(networkUrl);
-        // Test if the network image can be loaded by getting its dimensions
-        await getImageDimensions(provider);
-        return provider;
-      }
-    } catch (e) {
-      // Asset or network image failed to load, use fallback
-    }
-
-    return createFallbackImageProvider(
-      width: fallbackWidth,
-      height: fallbackHeight,
-    );
-  }
-
-  /// Get image dimensions from ImageProvider
-  static Future<Size> getImageDimensions(ImageProvider imageProvider) async {
-    final Completer<Size> completer = Completer<Size>();
-
-    final ImageConfiguration config = const ImageConfiguration();
-    final ImageStream stream = imageProvider.resolve(config);
-
-    late ImageStreamListener listener;
-    listener = ImageStreamListener(
-      (ImageInfo info, bool synchronousCall) {
-        final Size size = Size(
-          info.image.width.toDouble(),
-          info.image.height.toDouble(),
-        );
-        stream.removeListener(listener);
-        if (!completer.isCompleted) {
-          completer.complete(size);
-        }
-      },
-      onError: (exception, stackTrace) {
-        stream.removeListener(listener);
-        if (!completer.isCompleted) {
-          completer.completeError(exception);
-        }
-      },
-    );
-
-    stream.addListener(listener);
-    return completer.future;
-  }
-
-  /// Create a fallback image provider with generated content
-  static ImageProvider createFallbackImageProvider({
-    double width = 800.0,
-    double height = 600.0,
-  }) {
-    return GeneratedImageProvider(width: width.toInt(), height: height.toInt());
-  }
-
-  /// Generate heatmap data scaled to image dimensions
-  static HeatmapData generateScaledHeatmapData({
-    required List<Map<String, dynamic>> analysisData,
-    required double imageWidth,
-    required double imageHeight,
-  }) {
-    final points = <HeatmapPoint>[];
-
-    for (final analysis in analysisData) {
-      final breachpoints = analysis['breachpoints'] as List<dynamic>;
-      final riskScore = analysis['risk_score'] as double;
-
-      for (final point in breachpoints) {
-        points.add(
-          HeatmapPoint(
-            x: point['x'] * imageWidth, // Scale to actual image width
-            y: point['y'] * imageHeight, // Scale to actual image height
-            value: riskScore,
-          ),
-        );
-      }
-    }
-
-    return HeatmapData.fromPoints(points);
-  }
-
-  @override
-  State<Heatmap> createState() => _HeatmapState();
-}
-
-class _HeatmapState extends State<Heatmap> {
-  ui.Image? _backgroundImage;
-  ImageStream? _imageStream;
-  ImageStreamListener? _imageStreamListener;
-  Size? _imageSize;
-  bool _imageLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadBackgroundImage();
-    // Schedule the callback for after the build completes
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _notifyExtremaChange();
-    });
-  }
-
-  @override
-  void didUpdateWidget(Heatmap oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    // Check if background image changed
-    if (oldWidget.config.backgroundImage != widget.config.backgroundImage) {
-      _disposeImageStream();
-      _loadBackgroundImage();
-    }
-
-    if (oldWidget.data != widget.data) {
-      // Schedule the callback for after the build completes
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _notifyExtremaChange();
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _disposeImageStream();
-    super.dispose();
-  }
-
-  void _disposeImageStream() {
-    if (_imageStreamListener != null && _imageStream != null) {
-      _imageStream!.removeListener(_imageStreamListener!);
-    }
-    _imageStreamListener = null;
-    _imageStream = null;
-    _backgroundImage = null;
-    _imageSize = null;
-  }
-
-  void _loadBackgroundImage() {
-    if (widget.config.backgroundImage == null) {
-      setState(() {
-        _backgroundImage = null;
-        _imageSize = null;
-        _imageLoading = false;
-      });
-      return;
-    }
-
-    setState(() {
-      _imageLoading = true;
-    });
-
-    final ImageConfiguration config = const ImageConfiguration();
-    _imageStream = widget.config.backgroundImage!.resolve(config);
-
-    _imageStreamListener = ImageStreamListener(
-      (ImageInfo info, bool synchronousCall) {
-        if (mounted) {
-          final size = Size(
-            info.image.width.toDouble(),
-            info.image.height.toDouble(),
-          );
-          setState(() {
-            _backgroundImage = info.image;
-            _imageSize = size;
-            _imageLoading = false;
-          });
-          _notifyImageSizeChange(size);
-        }
-      },
-      onError: (exception, stackTrace) {
-        if (mounted) {
-          setState(() {
-            _backgroundImage = null;
-            _imageSize = null;
-            _imageLoading = false;
-          });
-        }
-      },
-    );
-
-    _imageStream!.addListener(_imageStreamListener!);
-  }
-
-  void _notifyExtremaChange() {
-    if (widget.onExtremaChange != null && mounted) {
-      widget.onExtremaChange!(widget.data.min, widget.data.max);
-    }
-  }
-
-  void _notifyImageSizeChange(Size size) {
-    if (widget.onImageSizeChange != null && mounted) {
-      widget.onImageSizeChange!(size);
-    }
-  }
-
-  /// Get image dimensions from the currently loaded image
-  Size? get imageSize => _imageSize;
-
-  /// Check if image is currently loading
-  bool get isImageLoading => _imageLoading;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: widget.config.backgroundColor,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return CustomPaint(
-            size: Size(constraints.maxWidth, constraints.maxHeight),
-            painter: HeatmapPainter(
-              data: widget.data,
-              config: widget.config,
-              backgroundImage: _backgroundImage,
-            ),
-            child: SizedBox(
-              width: constraints.maxWidth,
-              height: constraints.maxHeight,
-            ),
-          );
-        },
-      ),
-    );
   }
 }
 
@@ -593,22 +252,27 @@ class HeatmapPainter extends CustomPainter {
     final scaleX = canvasSize.width / imageWidth;
     final scaleY = canvasSize.height / imageHeight;
 
-    final canvasX = point.x * scaleX;
-    final canvasY = point.y * scaleY;
+    final canvasX =
+        point.x * scaleX * (config.useNormalizedCoordinates ? imageWidth : 1);
+    final canvasY =
+        point.y * scaleY * (config.useNormalizedCoordinates ? imageHeight : 1);
 
     // Scale radius proportionally to the smaller dimension to maintain aspect ratio
     final scaleFactor = math.min(scaleX, scaleY);
     final scaledRadius = pointRadius * scaleFactor;
 
     // Calculate opacity based on config
-    double pointOpacity;
-    if (config.opacity < 1.0) {
+    double pointOpacity = config.opacity.clamp(
+      config.minOpacity,
+      config.maxOpacity,
+    );
+    /* if (config.opacity < 1.0) {
       pointOpacity = config.opacity;
     } else {
       pointOpacity =
           config.minOpacity +
           (config.maxOpacity - config.minOpacity) * normalizedValue;
-    }
+    } */
 
     // Get color from gradient
     final color = _getGradientColor(normalizedValue);
@@ -681,5 +345,164 @@ class HeatmapPainter extends CustomPainter {
     return oldDelegate.data != data ||
         oldDelegate.config != config ||
         oldDelegate.backgroundImage != backgroundImage;
+  }
+}
+
+/// Flutter Heatmap Widget - equivalent to heatmap.js
+class Heatmap extends StatefulWidget {
+  final HeatmapData data;
+  final HeatmapConfig config;
+  final Function(double min, double max)? onExtremaChange;
+  final Function(Size imageSize)? onImageSizeChange;
+
+  const Heatmap({
+    super.key,
+    required this.data,
+    this.config = const HeatmapConfig(),
+    this.onExtremaChange,
+    this.onImageSizeChange,
+  });
+
+  /// Generate heatmap data scaled to image dimensions
+  @override
+  State<Heatmap> createState() => _HeatmapState();
+}
+
+class _HeatmapState extends State<Heatmap> {
+  ui.Image? _backgroundImage;
+  ImageStream? _imageStream;
+  ImageStreamListener? _imageStreamListener;
+  Size? _imageSize;
+  bool _imageLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBackgroundImage();
+    // Schedule the callback for after the build completes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _notifyExtremaChange();
+    });
+  }
+
+  @override
+  void didUpdateWidget(Heatmap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Check if background image changed
+    if (oldWidget.config.backgroundImage != widget.config.backgroundImage) {
+      _disposeImageStream();
+      _loadBackgroundImage();
+    }
+
+    if (oldWidget.data != widget.data) {
+      // Schedule the callback for after the build completes
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _notifyExtremaChange();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposeImageStream();
+    super.dispose();
+  }
+
+  void _disposeImageStream() {
+    if (_imageStreamListener != null && _imageStream != null) {
+      _imageStream!.removeListener(_imageStreamListener!);
+    }
+    _imageStreamListener = null;
+    _imageStream = null;
+    _backgroundImage = null;
+    _imageSize = null;
+  }
+
+  void _loadBackgroundImage() {
+    if (widget.config.backgroundImage == null) {
+      setState(() {
+        _backgroundImage = null;
+        _imageSize = null;
+        _imageLoading = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _imageLoading = true;
+    });
+
+    final ImageConfiguration config = const ImageConfiguration();
+    _imageStream = widget.config.backgroundImage!.resolve(config);
+
+    _imageStreamListener = ImageStreamListener(
+      (ImageInfo info, bool synchronousCall) {
+        if (mounted) {
+          final size = Size(
+            info.image.width.toDouble(),
+            info.image.height.toDouble(),
+          );
+          setState(() {
+            _backgroundImage = info.image;
+            _imageSize = size;
+            _imageLoading = false;
+          });
+          _notifyImageSizeChange(size);
+        }
+      },
+      onError: (exception, stackTrace) {
+        if (mounted) {
+          setState(() {
+            _backgroundImage = null;
+            _imageSize = null;
+            _imageLoading = false;
+          });
+        }
+      },
+    );
+
+    _imageStream!.addListener(_imageStreamListener!);
+  }
+
+  void _notifyExtremaChange() {
+    if (widget.onExtremaChange != null && mounted) {
+      widget.onExtremaChange!(widget.data.min, widget.data.max);
+    }
+  }
+
+  void _notifyImageSizeChange(Size size) {
+    if (widget.onImageSizeChange != null && mounted) {
+      widget.onImageSizeChange!(size);
+    }
+  }
+
+  /// Get image dimensions from the currently loaded image
+  Size? get imageSize => _imageSize;
+
+  /// Check if image is currently loading
+  bool get isImageLoading => _imageLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: widget.config.backgroundColor,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return CustomPaint(
+            size: Size(constraints.maxWidth, constraints.maxHeight),
+            painter: HeatmapPainter(
+              data: widget.data,
+              config: widget.config,
+              backgroundImage: _backgroundImage,
+            ),
+            child: SizedBox(
+              width: constraints.maxWidth,
+              height: constraints.maxHeight,
+            ),
+          );
+        },
+      ),
+    );
   }
 }

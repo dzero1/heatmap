@@ -36,15 +36,21 @@ Here's a basic example:
 
 ```dart
 final data = [
-    [1, 2, 3],  // [x, y, value]
-    [4, 5, 6],
-    [7, 8, 9],
+    [400, 522, 6],  // or [real world x, y, value]
+    [0.1, 0.2, 3],  // or [Normalized x, Normalized y, value], use useNormalizedCoordinates=true in config
 ];
 
 Heatmap(
     data: data,
     config: HeatmapConfig(
-        backgroundImage: ui.Image,
+        radius: 40.0,
+        blur: 0.6,
+        maxOpacity: 0.7,
+        minOpacity: 0.1,
+        backgroundImage: ImageProvider,
+        backgroundFit: BoxFit.fill,
+        backgroundOpacity: 1.0,
+        backgroundColor: Colors.transparent,
     ),
 )
 ```
