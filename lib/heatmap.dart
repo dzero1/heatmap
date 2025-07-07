@@ -71,7 +71,7 @@ class HeatmapData {
   /// Create HeatmapData with automatic min/max calculation
   factory HeatmapData.fromPoints(List<HeatmapPoint> points) {
     if (points.isEmpty) {
-      return const HeatmapData(points: [], max: 0.0, min: 0.0);
+      return const HeatmapData(points: [], max: 100.0, min: 0.0);
     }
 
     double max = points.first.value;
@@ -80,6 +80,11 @@ class HeatmapData {
     for (final point in points) {
       if (point.value > max) max = point.value;
       if (point.value < min) min = point.value;
+    }
+
+    if (min == max) {
+      // If all points have the same value, set min to 0
+      min = 0.0;
     }
 
     return HeatmapData(points: points, max: max, min: min);
@@ -307,6 +312,8 @@ class HeatmapPainter extends CustomPainter {
 
   Color _getGradientColor(double value) {
     if (config.gradient.isEmpty) return Colors.red;
+
+    print('Normalized value: $value');
 
     // Convert normalized value (0.0-1.0) to percentage (0-100)
     final percentage = (value * 100).round();
